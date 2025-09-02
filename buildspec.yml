@@ -1,0 +1,22 @@
+# This buildspec file is for the CI/CD pipeline of the serverless backend.
+# It packages the Lambda function and the CloudFormation template.
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      # Install the AWS Serverless Application Model (SAM) CLI
+      - echo Installing SAM CLI...
+      - pip install aws-sam-cli
+
+  build:
+    commands:
+      # The sam package command zips up your Lambda function and uploads it to S3.
+      # It then returns a new template file that contains the S3 location of your code artifact.
+      - echo Packaging the serverless application...
+      - sam package --template-file project-tracker-backend.yaml --s3-bucket project-tracker-be-artifacts --output-template-file packaged.yaml
+
+artifacts:
+  files:
+    # We will upload the packaged.yaml file to our S3 bucket, which can then be used by CloudFormation.
+    - packaged.yaml

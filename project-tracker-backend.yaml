@@ -1,0 +1,122 @@
+Description: 'Project Tracker Backend: Lambda Function and API Gateway'
+
+Resources:
+  # The Lambda function that will handle all API requests.
+  ProjectTrackerLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ProjectTrackerLambdaFunction
+      Runtime: python3.9
+      Handler: lambda_function.lambda_handler
+      Code:
+        # The S3 bucket and key for your Lambda's code package.
+        # We will create this code artifact in the build process.
+        S3Bucket: project-tracker-be-artifacts
+        S3Key: YOUR_S3_CODE_KEY
+      # This IAM role will give the Lambda permission to access DynamoDB.
+      # We will define this role in the next step.
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # The IAM role for the Lambda function. It grants permissions.
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ProjectTrackerLambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        # This policy grants permissions to write logs to CloudWatch.
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                Resource:
+                  # This ARN grants permissions to your specific DynamoDB table.
+                  # It's important to replace "YOUR_REGION" and "YOUR_ACCOUNT_ID" with your actual values.
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ProjectTrackerProjects
+
+  # The API Gateway that will serve as the HTTP endpoint for your frontend.
+  ProjectTrackerApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: ProjectTrackerApi
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowHeaders:
+          - Content-Type
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+        AllowOrigins:
+          - '*'
+
+  # The integration resource links the API Gateway to the Lambda function.
+  ProjectTrackerLambdaIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ProjectTrackerApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub
+        - arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+        - LambdaArn: !GetAtt ProjectTrackerLambdaFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # The API routes that will map the HTTP requests to the Lambda integration.
+  GetProjectsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProjectTrackerApi
+      RouteKey: GET /projects
+      AuthorizationType: NONE
+      Target: !Sub integrations/${ProjectTrackerLambdaIntegration}
+
+  AddProjectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProjectTrackerApi
+      RouteKey: POST /projects
+      AuthorizationType: NONE
+      Target: !Sub integrations/${ProjectTrackerLambdaIntegration}
+
+  UpdateProjectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProjectTrackerApi
+      RouteKey: PUT /projects
+      AuthorizationType: NONE
+      Target: !Sub integrations/${ProjectTrackerLambdaIntegration}
+
+  DeleteProjectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ProjectTrackerApi
+      RouteKey: DELETE /projects
+      AuthorizationType: NONE
+      Target: !Sub integrations/${ProjectTrackerLambdaIntegration}
+
+  # This permission allows API Gateway to invoke the Lambda function.
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt ProjectTrackerLambdaFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ProjectTrackerApi}/*
