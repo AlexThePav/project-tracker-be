@@ -1,28 +1,28 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: |
   Creates a CI/CD pipeline to build and deploy the serverless backend
-  using CodeCommit, CodeBuild, CodePipeline, and CloudFormation.
+  using GitHub, CodeBuild, CodePipeline, and CloudFormation.
 
 Parameters:
-  CodeRepoName:
+  GitHubConnectionArn:
     Type: String
-    Description: The name of the CodeCommit repository.
-    Default: project-tracker-backend-repo
+    Description: The ARN of the CodeStar Connection to your GitHub account.
+  GitHubOwner:
+    Type: String
+    Description: The owner of the GitHub repository (e.g., your GitHub username or organization name).
+  GitHubRepo:
+    Type: String
+    Description: The name of the GitHub repository.
+  GitHubBranch:
+    Type: String
+    Description: The name of the branch to trigger the pipeline (e.g., master or main).
+    Default: main
   BackendStackName:
     Type: String
     Description: The name of the CloudFormation stack for the backend resources.
     Default: project-tracker-backend
 
 Resources:
-  # -------------------------------------------------------------------
-  # CodeCommit Repository
-  # -------------------------------------------------------------------
-  CodeRepo:
-    Type: AWS::CodeCommit::Repository
-    Properties:
-      RepositoryName: !Ref CodeRepoName
-      RepositoryDescription: "Source code for the project tracker backend."
-
   # -------------------------------------------------------------------
   # IAM Roles for the Pipeline
   # -------------------------------------------------------------------
@@ -51,12 +51,8 @@ Resources:
                   - !Join ["/", [!GetAtt PipelineArtifactsBucket.Arn, "*"]]
               - Effect: Allow
                 Action:
-                  - codecommit:GetBranch
-                  - codecommit:GetCommit
-                  - codecommit:GetRepository
-                  - codecommit:ListBranches
-                  - codecommit:GitPull
-                Resource: !GetAtt CodeRepo.Arn
+                  - "codestar-connections:UseConnection"
+                Resource: !Ref GitHubConnectionArn
               - Effect: Allow
                 Action:
                   - "codebuild:StartBuild"
@@ -178,13 +174,14 @@ Resources:
               ActionTypeId:
                 Category: Source
                 Owner: AWS
-                Provider: CodeCommit
+                Provider: CodeStarSourceConnection
                 Version: "1"
               OutputArtifacts:
                 - Name: SourceArtifacts
               Configuration:
-                RepositoryName: !Ref CodeRepo
-                BranchName: master
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Sub "${GitHubOwner}/${GitHubRepo}"
+                BranchName: !Ref GitHubBranch
               RunOrder: 1
         - Name: Build
           Actions:
@@ -225,9 +222,6 @@ Resources:
       BucketName: !Sub "${AWS::StackName}-pipeline-artifacts-${AWS::AccountId}"
 
 Outputs:
-  CodeCommitRepositoryURL:
-    Description: "URL for the CodeCommit repository."
-    Value: !GetAtt CodeRepo.CloneUrlHttp
   PipelineURL:
     Description: "URL for the CodePipeline."
     Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${Pipeline}/view?region=${AWS::Region}"
