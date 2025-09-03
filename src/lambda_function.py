@@ -3,13 +3,15 @@ import os
 import uuid
 import boto3
 
+from collections import defaultdict
+
 # Initialize the DynamoDB client
 dynamodb = boto3.resource('dynamodb')
 table_name = os.environ.get('TABLE_NAME')
 table = dynamodb.Table(table_name)
 
 # A dictionary to store the routes
-routes = {}
+routes = defaultdict(dict)
 
 
 def route(path, http_method):
@@ -18,8 +20,6 @@ def route(path, http_method):
     """
 
     def decorator(func):
-        if path not in routes:
-            routes[path] = {}
         routes[path][http_method] = func
         return func
 
