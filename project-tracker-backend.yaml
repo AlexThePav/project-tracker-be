@@ -1,122 +1,82 @@
-Description: 'Project Tracker Backend: Lambda Function and API Gateway'
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: |
+  A complete backend stack for the Project Tracker application,
+  including a Lambda function, API Gateway, and DynamoDB table.
+
+Parameters:
+  LambdaCodeBucketName:
+    Type: String
+    Description: The name of the S3 bucket where the Lambda code will be packaged and stored.
 
 Resources:
-  # The Lambda function that will handle all API requests.
-  ProjectTrackerLambdaFunction:
-    Type: AWS::Lambda::Function
+  # -------------------------------------------------------------------
+  # AWS Lambda Function
+  # -------------------------------------------------------------------
+  ProjectTrackerFunction:
+    Type: AWS::Serverless::Function
     Properties:
       FunctionName: ProjectTrackerLambdaFunction
-      Runtime: python3.9
+      Runtime: python3.13
       Handler: lambda_function.lambda_handler
-      Code:
-        # The S3 bucket and key for your Lambda's code package.
-        # We will create this code artifact in the build process.
-        S3Bucket: project-tracker-be-artifacts
-        S3Key: YOUR_S3_CODE_KEY
-      # This IAM role will give the Lambda permission to access DynamoDB.
-      # We will define this role in the next step.
-      Role: !GetAtt LambdaExecutionRole.Arn
-
-  # The IAM role for the Lambda function. It grants permissions.
-  LambdaExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: ProjectTrackerLambdaExecutionRole
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      ManagedPolicyArns:
-        # This policy grants permissions to write logs to CloudWatch.
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      # The CodeUri property points to the local folder containing the Lambda code.
+      # The 'sam package' command will bundle this folder and upload it to the S3 bucket.
+      CodeUri: ./src/
       Policies:
-        - PolicyName: DynamoDBAccessPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - dynamodb:PutItem
-                  - dynamodb:GetItem
-                  - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
-                  - dynamodb:Query
-                Resource:
-                  # This ARN grants permissions to your specific DynamoDB table.
-                  # It's important to replace "YOUR_REGION" and "YOUR_ACCOUNT_ID" with your actual values.
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ProjectTrackerProjects
+        # Grants basic execution and log-writing permissions.
+        - AWSLambdaBasicExecutionRole
+        # Grants full CRUD permissions for the DynamoDB table.
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProjectsTable
+      Events:
+        # This defines the API Gateway endpoints that will trigger the Lambda.
+        # SAM automatically creates the API and the necessary integration.
+        # It's a best practice to define a specific endpoint for each action.
+        ListProjectsApi:
+          Type: Api
+          Properties:
+            Path: /projects
+            Method: GET
+        CreateProjectApi:
+          Type: Api
+          Properties:
+            Path: /projects
+            Method: POST
+        GetProjectApi:
+          Type: Api
+          Properties:
+            Path: /projects/{projectId}
+            Method: GET
+        UpdateProjectApi:
+          Type: Api
+          Properties:
+            Path: /projects/{projectId}
+            Method: PUT
+        DeleteProjectApi:
+          Type: Api
+          Properties:
+            Path: /projects/{projectId}
+            Method: DELETE
 
-  # The API Gateway that will serve as the HTTP endpoint for your frontend.
-  ProjectTrackerApi:
-    Type: AWS::ApiGatewayV2::Api
+  # -------------------------------------------------------------------
+  # DynamoDB Table
+  # -------------------------------------------------------------------
+  ProjectsTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      Name: ProjectTrackerApi
-      ProtocolType: HTTP
-      CorsConfiguration:
-        AllowHeaders:
-          - Content-Type
-        AllowMethods:
-          - GET
-          - POST
-          - PUT
-          - DELETE
-        AllowOrigins:
-          - '*'
+      TableName: ProjectTrackerProjects
+      AttributeDefinitions:
+        - AttributeName: "projectId"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "projectId"
+          KeyType: "HASH"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
 
-  # The integration resource links the API Gateway to the Lambda function.
-  ProjectTrackerLambdaIntegration:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref ProjectTrackerApi
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub
-        - arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
-        - LambdaArn: !GetAtt ProjectTrackerLambdaFunction.Arn
-      PayloadFormatVersion: '2.0'
-
-  # The API routes that will map the HTTP requests to the Lambda integration.
-  GetProjectsRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref ProjectTrackerApi
-      RouteKey: GET /projects
-      AuthorizationType: NONE
-      Target: !Sub integrations/${ProjectTrackerLambdaIntegration}
-
-  AddProjectRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref ProjectTrackerApi
-      RouteKey: POST /projects
-      AuthorizationType: NONE
-      Target: !Sub integrations/${ProjectTrackerLambdaIntegration}
-
-  UpdateProjectRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref ProjectTrackerApi
-      RouteKey: PUT /projects
-      AuthorizationType: NONE
-      Target: !Sub integrations/${ProjectTrackerLambdaIntegration}
-
-  DeleteProjectRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref ProjectTrackerApi
-      RouteKey: DELETE /projects
-      AuthorizationType: NONE
-      Target: !Sub integrations/${ProjectTrackerLambdaIntegration}
-
-  # This permission allows API Gateway to invoke the Lambda function.
-  LambdaPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !GetAtt ProjectTrackerLambdaFunction.Arn
-      Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ProjectTrackerApi}/*
+Outputs:
+  # The URL for the API Gateway endpoint.
+  ApiUrl:
+    Description: The URL for the Project Tracker API.
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

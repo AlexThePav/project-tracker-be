@@ -101,14 +101,14 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: "arn:aws:logs:*:*:*"
-              # This allows CodeBuild to run 'sam package'
               - Effect: Allow
                 Action:
                   - s3:PutObject
                   - s3:GetObject
+                  - s3:ListBucket
                 Resource:
-                  - !Sub "arn:aws:s3:::${BackendStackName}-lambda-code-${AWS::AccountId}"
-                  - !Sub "arn:aws:s3:::${BackendStackName}-lambda-code-${AWS::AccountId}/*"
+                  - !GetAtt LambdaCodeBucket.Arn
+                  - !Join ["/", [!GetAtt LambdaCodeBucket.Arn, "*"]]
 
   CloudFormationRole:
     Type: AWS::IAM::Role
@@ -150,7 +150,7 @@ Resources:
             build:
               commands:
                 - echo Packaging Lambda function...
-                - sam package --template-file project-tracker-backend.yaml --s3-bucket ${BackendStackName}-lambda-code-${AWS::AccountId} --output-template-file packaged.yaml
+                - sam package --template-file project-tracker-backend.yaml --s3-bucket !Ref LambdaCodeBucket --output-template-file packaged.yaml
           artifacts:
             files:
               - "**/*"
@@ -216,10 +216,18 @@ Resources:
                 RoleArn: !GetAtt CloudFormationRole.Arn
               RunOrder: 1
 
+  # -------------------------------------------------------------------
+  # S3 Buckets for deployment
+  # -------------------------------------------------------------------
   PipelineArtifactsBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "${AWS::StackName}-pipeline-artifacts-${AWS::AccountId}"
+
+  LambdaCodeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${BackendStackName}-lambda-code-${AWS::AccountId}"
 
 Outputs:
   PipelineURL:
