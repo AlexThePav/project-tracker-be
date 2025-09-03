@@ -1,6 +1,7 @@
 version: 0.2
 
 # The `buildspec.yml` is the instruction manual for the CodeBuild worker.
+# We have removed the variable reference here to fix the "Bad substitution" error.
 phases:
   install:
     commands:
@@ -22,7 +23,8 @@ phases:
       # It zips the contents of the `CodeUri` folder (`./src/`), uploads it to the
       # S3 bucket, and then creates a new CloudFormation template (`packaged.yaml`)
       # that references the new location of the code in S3.
-      - sam package --template-file project-tracker-backend.yaml --s3-bucket $LambdaCodeBucketName --output-template-file packaged.yaml
+      # The S3 bucket name is now hardcoded to bypass the pipeline parameter error.
+      - sam package --template-file project-tracker-backend.yaml --s3-bucket project-tracker-backend-lambda-code-$AWS_ACCOUNT_ID --output-template-file packaged.yaml
 
 # The `artifacts` section tells the pipeline which files to send to the next stage.
 # We are now sending the `packaged.yaml` file, not the source files.
