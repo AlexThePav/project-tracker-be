@@ -28,6 +28,10 @@ Resources:
         # Grants full CRUD permissions for the DynamoDB table.
         - DynamoDBCrudPolicy:
             TableName: !Ref ProjectsTable
+      # CRITICAL: This environment block passes the DynamoDB table name to the Lambda function.
+      Environment:
+        Variables:
+          PROJECTS_TABLE_NAME: !Ref ProjectsTable
       Events:
         # This defines the API Gateway endpoints that will trigger the Lambda.
         # SAM automatically creates the API and the necessary integration.
